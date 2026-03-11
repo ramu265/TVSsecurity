@@ -5,10 +5,17 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'my_secure_vault_key_2026'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///vault.db'
-# Static/uploads path ni absolute path ga marchamu so error radhu
-app.config['UPLOAD_FOLDER'] = os.path.join(app.root_path, 'static', 'uploads')
+
+# --- Configuration Changes for Deployment ---
+# Secret Key ni Environment Variable nundi techukuntundi
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'my_secure_vault_key_2026')
+
+# Database Path Fix: Render lo error rakunda absolute path set chesam
+base_dir = os.path.abspath(os.path.dirname(__file__))
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(base_dir, 'vault.db')
+
+# Uploads Folder Path Fix
+app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static', 'uploads')
 
 # Folder lekapothe create chesthundhi
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
@@ -34,7 +41,8 @@ class Document(db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    # Query.get() badulu session.get() use cheyadam 2.0 standard
+    return db.session.get(User, int(user_id))
 
 # --- Routes ---
 
@@ -81,7 +89,6 @@ def upload():
     
     if file and file.filename != '':
         fname = secure_filename(file.filename)
-        # Check for unique filename to avoid overwriting
         save_path = os.path.join(app.config['UPLOAD_FOLDER'], fname)
         file.save(save_path)
         
@@ -96,7 +103,11 @@ def upload():
 @app.route('/access/<int:doc_id>', methods=['POST'])
 @login_required
 def access(doc_id):
-    doc = Document.query.get_or_404(doc_id)
+    doc = db.session.get(Document, doc_id)
+    if not doc:
+        flash("Document not found!")
+        return redirect(url_for('dashboard'))
+        
     entered_pass = request.form.get('check_pass')
     if doc.doc_password == entered_pass:
         return render_template('view_file.html', doc=doc)
@@ -106,8 +117,8 @@ def access(doc_id):
 @app.route('/delete/<int:doc_id>')
 @login_required
 def delete(doc_id):
-    doc = Document.query.get_or_404(doc_id)
-    if doc.user_id == current_user.id:
+    doc = db.session.get(Document, doc_id)
+    if doc and doc.user_id == current_user.id:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], doc.filename)
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -121,12 +132,9 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# app.py lo chivara unna code ni ila marchandi
-
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     
     port = int(os.environ.get("PORT", 5000))
-    # debug=False ani pettandi production lo
     app.run(host='0.0.0.0', port=port, debug=False)
