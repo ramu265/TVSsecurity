@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>View Document - Secure Vault</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; text-align: center; padding: 40px; }
+        .view-card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.1); display: inline-block; max-width: 90%; }
+        .img-container { margin: 20px 0; border: 2px solid #3498db; border-radius: 10px; overflow: hidden; }
+        img { max-width: 100%; height: auto; display: block; }
+        .btn-box { display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
+        .btn { padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: bold; color: white; border: none; cursor: pointer; transition: 0.3s; }
+        .btn-down { background: #27ae60; }
+        .btn-down:hover { background: #1e8449; }
+        .btn-share { background: #3498db; }
+        .btn-share:hover { background: #2980b9; }
+        .btn-back { background: #7f8c8d; }
+        .btn-back:hover { background: #626567; }
+    </style>
+</head>
+<body>
+
+<div class="view-card">
+    <h2>📄 {{ doc.name }}</h2>
+    <div class="img-container">
+        <img src="{{ url_for('static', filename='uploads/' + doc.filename) }}" alt="Document Photo">
+    </div>
+
+    <div class="btn-box">
+        <a href="{{ url_for('static', filename='uploads/' + doc.filename) }}" download="{{ doc.name }}" class="btn btn-down">📥 Download Now</a>
+        
+        <button onclick="shareFile()" class="btn btn-share">🔗 Share Document</button>
+        
+        <a href="/dashboard" class="btn btn-back">⬅️ Back to Vault</a>
+    </div>
+</div>
+
+<script>
+    function shareFile() {
+        if (navigator.share) {
+            navigator.share({
+                title: '{{ doc.name }}',
+                text: 'Check out this document from my Secure Vault',
+                url: window.location.href
+            }).catch(console.error);
+        } else {
+            // Browser share support lekapothe link copy avthundhi
+            const dummy = document.createElement('input');
+            document.body.appendChild(dummy);
+            dummy.value = window.location.href;
+            dummy.select();
+            document.execCommand('copy');
+            document.body.removeChild(dummy);
+            alert("Link copied to clipboard! You can now share it.");
+        }
+    }
+</script>
+
+</body>
+</html>

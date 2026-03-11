@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Secure Vault</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); height: 100vh; display: flex; justify-content: center; align-items: center; margin: 0; }
+        .auth-card { background: white; padding: 40px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); width: 350px; text-align: center; }
+        h2 { color: #333; margin-bottom: 25px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #667eea; border: none; color: white; border-radius: 8px; cursor: pointer; font-size: 16px; transition: 0.3s; }
+        button:hover { background: #4a59bd; }
+        a { display: block; margin-top: 15px; color: #667eea; text-decoration: none; font-size: 14px; }
+        .error { color: red; font-size: 14px; }
+
+        /* Developer Section */
+        .dev-container { margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; }
+        .about-btn { background: #f0f2f5; color: #333; border: 1px solid #ddd; padding: 8px 15px; border-radius: 20px; cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.2s; }
+        .about-btn:hover { background: #e4e6e9; }
+        
+        #devNameDisplay { display: none; margin-top: 15px; font-weight: bold; color: #764ba2; font-size: 18px; animation: popIn 0.4s ease-out; }
+
+        /* Instagram Like System - Pink Theme */
+        .instagram-like { margin-top: 20px; display: flex; flex-direction: column; align-items: center; }
+        
+        /* Black Outline Heart */
+        .heart-btn { 
+            font-size: 30px; 
+            color: transparent; 
+            -webkit-text-stroke: 2px black; 
+            cursor: pointer; 
+            transition: all 0.2s ease;
+        }
+        
+        /* Active Pink State */
+        .heart-btn.active { 
+            color: #ff69b4; 
+            -webkit-text-stroke: 0px; 
+            animation: heartBeat 0.3s linear; 
+        }
+        
+        .like-text { font-size: 14px; color: #262626; font-weight: 600; margin-top: 8px; }
+
+        @keyframes heartBeat {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="auth-card">
+        <h2>Welcome Back</h2>
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}<p class="error">{{ messages[0] }}</p>{% endif %}
+        {% endwith %}
+        <form method="POST">
+            <input name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required >
+            <button type="submit">Login</button>
+        </form>
+        <a href="/register">Don't have an account? Register</a>
+
+        <div class="dev-container">
+            <button class="about-btn" onclick="showDeveloper()">About Developer</button>
+            <div id="devNameDisplay"><p>Tirumareddy Ramu</p><br><p>Son of Tirumareddy Thirupathi Rao</p><br>From Peddatarimi</div>
+
+            <div class="instagram-like">
+                <i class="fa-solid fa-heart heart-btn" id="heartIcon" onclick="handleLike()"></i>
+                <span class="like-text"><span id="likeCount">0</span> likes</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showDeveloper() {
+            // Button click cheyagane display logic
+            let display = document.getElementById('devNameDisplay');
+            display.style.display = (display.style.display === 'block') ? 'none' : 'block';
+        }
+
+        // Like Logic
+        let isLiked = false;
+        function handleLike() {
+            const heart = document.getElementById('heartIcon');
+            const countLabel = document.getElementById('likeCount');
+            let count = parseInt(countLabel.innerText);
+
+            if (!isLiked) {
+                heart.classList.add('active');
+                countLabel.innerText = count + 1;
+                isLiked = true;
+            } else {
+                heart.classList.remove('active');
+                countLabel.innerText = count - 1;
+                isLiked = false;
+            }
+        }
+    </script>
+</body>
+</html>

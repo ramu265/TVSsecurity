@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard - Secure Vault</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin: 0; }
+        nav { background: #1c1e21; color: white; padding: 15px 40px; display: flex; justify-content: space-between; align-items: center; }
+        .container { padding: 30px; max-width: 1100px; margin: auto; }
+        
+        /* Upload Section */
+        .upload-card { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 30px; }
+        .upload-form { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 15px; align-items: center; }
+        input { padding: 12px; border: 1px solid #ddd; border-radius: 6px; width: 100%; box-sizing: border-box; }
+        .btn-save { background: #28a745; color: white; border: none; padding: 12px 25px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        
+        /* Grid Section */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        .doc-card { background: white; padding: 20px; border-radius: 12px; text-align: center; border-top: 5px solid #007bff; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .doc-name { font-size: 1.2rem; font-weight: bold; color: #1c1e21; margin-bottom: 15px; display: block; }
+        
+        .pass-input { margin-bottom: 10px; }
+        .btn-unlock { background: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
+        .btn-delete { display: block; margin-top: 15px; color: #dc3545; text-decoration: none; font-size: 13px; }
+        .logout-link { color: #ff4d4d; text-decoration: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<nav>
+    <span><strong>🛡️ SECURE VAULT</strong> | {{ current_user.username }}</span>
+    <a href="/logout" class="logout-link">Logout</a>
+</nav>
+
+<div class="container">
+    <div class="upload-card">
+        <h3 style="margin-top:0">📤 Upload & Label Document</h3>
+        <form action="/upload" method="POST" enctype="multipart/form-data" class="upload-form">
+            <input type="text" name="doc_name" placeholder="Enter Document Name (e.g. My ID)" required>
+            <input type="password" name="doc_pass" placeholder="Set File Password" required>
+            <input type="file" name="file" accept="image/*" required>
+            <button type="submit" class="btn-save">Save to Vault</button>
+        </form>
+    </div>
+
+    <h3>📂 Your Saved Documents</h3>
+    <div class="grid">
+        {% for doc in docs %}
+        <div class="doc-card">
+            <span class="doc-name">{{ doc.name }}</span>
+            <small style="color:gray; margin-bottom: 10px; display:block;">File: {{ doc.filename }}</small>
+            
+            <form action="/access/{{ doc.id }}" method="POST">
+                <input type="password" name="check_pass" placeholder="Enter Password" class="pass-input" required>
+                <button type="submit" class="btn-unlock">Unlock & View</button>
+            </form>
+            
+            <a href="/delete/{{ doc.id }}" class="btn-delete" onclick="return confirm('Delete this document?')">🗑 Delete</a>
+        </div>
+        {% else %}
+        <p>No documents found. Start by uploading one!</p>
+        {% endfor %}
+    </div>
+</div>
+
+</body>
+</html>
