@@ -6,53 +6,62 @@ import cloudinary.uploader
 from flask import Flask, render_template, request, redirect, session, jsonify, url_for
 
 app = Flask(__name__)
+# SECRET_KEY ని ఎన్విరాన్మెంట్ వేరియబుల్ నుండి తీసుకుంటుంది
 app.secret_key = os.environ.get("SECRET_KEY", "tvs_vault_secure_2026")
 
 # --- 1. Cloudinary Configuration ---
-# Render Environment Variables లో ఈ వివరాలు సెట్ చేసుకోవాలి
 cloudinary.config( 
-  cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME"), 
-  api_key = os.environ.get("CLOUDINARY_API_KEY"), 
-  api_secret = os.environ.get("CLOUDINARY_API_SECRET") 
+    cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME"), 
+    api_key = os.environ.get("CLOUDINARY_API_KEY"), 
+    api_secret = os.environ.get("CLOUDINARY_API_SECRET") 
 )
 
 # --- 2. Database Connection (PostgreSQL) ---
 def get_db_connection():
-    # Render లో లభించే External Database URL ని ఇక్కడ వాడాలి
     DB_URL = os.environ.get("DATABASE_URL")
     conn = psycopg2.connect(DB_URL, sslmode='require')
     return conn
 
-# టేబుల్స్ క్రియేషన్
+# టేబుల్స్ క్రియేషన్ - వెబ్‌సైట్ స్టార్ట్ అయినప్పుడు ఒకేసారి రన్ అవుతుంది
 def init_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS users(
-        id SERIAL PRIMARY KEY,
-        username TEXT UNIQUE,
-        password TEXT
-    )
-    """)
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS documents(
-        id SERIAL PRIMARY KEY,
-        user_name TEXT,
-        name TEXT,
-        file_url TEXT,
-        public_id TEXT,
-        password TEXT
-    )
-    """)
-    conn.commit()
-    cur.close()
-    conn.close()
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS users(
+            id SERIAL PRIMARY KEY,
+            username TEXT UNIQUE,
+            password TEXT
+        )
+        """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS documents(
+            id SERIAL PRIMARY KEY,
+            user_name TEXT,
+            name TEXT,
+            file_url TEXT,
+            public_id TEXT,
+            password TEXT
+        )
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Database Init Error: {e}")
 
 init_db()
 
 # --- 3. Routes ---
 
-@app.route("/", methods=["GET","POST"])
+# Home Route: వెబ్‌సైట్ ఓపెన్ అవ్వగానే లాగిన్ పేజీ కనిపిస్తుంది
+@app.route("/")
+def home():
+    if "user" in session:
+        return redirect(url_for("dashboard"))
+    return render_template("login.html")
+
+@app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form["username"]
@@ -68,10 +77,10 @@ def login():
         if user:
             session["user"] = username
             return redirect(url_for("dashboard"))
-        return "Invalid Credentials"
+        return "Invalid Credentials. Please <a href='/login'>try again</a>."
     return render_template("login.html")
 
-@app.route("/register", methods=["GET","POST"])
+@app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
         username = request.form["username"]
@@ -86,10 +95,10 @@ def register():
             conn.close()
             return redirect(url_for("login"))
         except:
-            return "User already exists"
+            return "User already exists. <a href='/register'>Try different name</a>."
     return render_template("register.html")
 
-@app.route("/dashboard", methods=["GET","POST"])
+@app.route("/dashboard", methods=["GET", "POST"])
 def dashboard():
     if "user" not in session:
         return redirect(url_for("login"))
@@ -103,7 +112,6 @@ def dashboard():
         file = request.files["file"]
 
         if file:
-            # Cloudinary కి అప్‌లోడ్ చేయడం
             upload_result = cloudinary.uploader.upload(file)
             file_url = upload_result["secure_url"]
             public_id = upload_result["public_id"]
@@ -111,6 +119,7 @@ def dashboard():
             cur.execute("INSERT INTO documents(user_name, name, file_url, public_id, password) VALUES(%s, %s, %s, %s, %s)",
                         (session["user"], docname, file_url, public_id, docpass))
             conn.commit()
+            return redirect(url_for("dashboard"))
 
     cur.execute("SELECT * FROM documents WHERE user_name=%s", (session["user"],))
     docs = cur.fetchall()
@@ -142,8 +151,6 @@ def delete(id):
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=DictCursor)
-    
-    # Cloudinary నుండి ఫైల్ డిలీట్ చేయడానికి public_id పొందడం
     cur.execute("SELECT public_id FROM documents WHERE id=%s", (id,))
     doc = cur.fetchone()
     
@@ -162,4 +169,6 @@ def logout():
     return redirect(url_for("login"))
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Render కోసం పోర్ట్ సెట్టింగ్
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
