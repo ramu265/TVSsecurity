@@ -6,7 +6,7 @@ import cloudinary.uploader
 from flask import Flask, render_template, request, redirect, session, jsonify, url_for
 
 app = Flask(__name__)
-# SECRET_KEY ని ఎన్విరాన్మెంట్ వేరియబుల్ నుండి తీసుకుంటుంది
+# Render Environment Variables లో SECRET_KEY సెట్ చేసుకోవాలి
 app.secret_key = os.environ.get("SECRET_KEY", "tvs_vault_secure_2026")
 
 # --- 1. Cloudinary Configuration ---
@@ -18,11 +18,17 @@ cloudinary.config(
 
 # --- 2. Database Connection (PostgreSQL) ---
 def get_db_connection():
+    # Render లో లభించే Database URL ని తీసుకుంటుంది
     DB_URL = os.environ.get("DATABASE_URL")
+    
+    # ఒకవేళ URL 'postgresql://' తో ఉంటే దాన్ని 'postgres://' గా మారుస్తుంది (Render/Python compatibility కోసం)
+    if DB_URL and DB_URL.startswith("postgresql://"):
+        DB_URL = DB_URL.replace("postgresql://", "postgres://", 1)
+        
     conn = psycopg2.connect(DB_URL, sslmode='require')
     return conn
 
-# టేబుల్స్ క్రియేషన్ - వెబ్‌సైట్ స్టార్ట్ అయినప్పుడు ఒకేసారి రన్ అవుతుంది
+# టేబుల్స్ క్రియేషన్
 def init_db():
     try:
         conn = get_db_connection()
@@ -48,14 +54,15 @@ def init_db():
         cur.close()
         conn.close()
     except Exception as e:
-        print(f"Database Init Error: {e}")
+        print(f"Database Error: {e}")
 
+# యాప్ స్టార్ట్ అవ్వగానే డేటాబేస్ టేబుల్స్ క్రియేట్ అవుతాయి
 init_db()
 
 # --- 3. Routes ---
 
-# Home Route: వెబ్‌సైట్ ఓపెన్ అవ్వగానే లాగిన్ పేజీ కనిపిస్తుంది
-@app.route("/")
+# Home Route: వెబ్‌సైట్ ఓపెన్ అవ్వగానే లాగిన్ పేజీకి పంపుతుంది
+@app.route("/", methods=["GET", "POST"])
 def home():
     if "user" in session:
         return redirect(url_for("dashboard"))
@@ -77,7 +84,7 @@ def login():
         if user:
             session["user"] = username
             return redirect(url_for("dashboard"))
-        return "Invalid Credentials. Please <a href='/login'>try again</a>."
+        return "Invalid Credentials. <a href='/login'>Try again</a>"
     return render_template("login.html")
 
 @app.route("/register", methods=["GET", "POST"])
@@ -95,7 +102,7 @@ def register():
             conn.close()
             return redirect(url_for("login"))
         except:
-            return "User already exists. <a href='/register'>Try different name</a>."
+            return "User already exists. <a href='/register'>Try again</a>"
     return render_template("register.html")
 
 @app.route("/dashboard", methods=["GET", "POST"])
@@ -151,6 +158,7 @@ def delete(id):
 
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=DictCursor)
+    
     cur.execute("SELECT public_id FROM documents WHERE id=%s", (id,))
     doc = cur.fetchone()
     
@@ -169,6 +177,6 @@ def logout():
     return redirect(url_for("login"))
 
 if __name__ == "__main__":
-    # Render కోసం పోర్ట్ సెట్టింగ్
+    # Render కోసం హోస్ట్ మరియు పోర్ట్ సెట్టింగ్స్
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
