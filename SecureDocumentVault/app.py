@@ -1,140 +1,165 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from werkzeug.utils import secure_filename
+import psycopg2
+from psycopg2.extras import DictCursor
+import cloudinary
+import cloudinary.uploader
+from flask import Flask, render_template, request, redirect, session, jsonify, url_for
 
 app = Flask(__name__)
+app.secret_key = os.environ.get("SECRET_KEY", "tvs_vault_secure_2026")
 
-# --- Configuration Changes for Deployment ---
-# Secret Key ni Environment Variable nundi techukuntundi
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'my_secure_vault_key_2026')
+# --- 1. Cloudinary Configuration ---
+# Render Environment Variables లో ఈ వివరాలు సెట్ చేసుకోవాలి
+cloudinary.config( 
+  cloud_name = os.environ.get("CLOUDINARY_CLOUD_NAME"), 
+  api_key = os.environ.get("CLOUDINARY_API_KEY"), 
+  api_secret = os.environ.get("CLOUDINARY_API_SECRET") 
+)
 
-# Database Path Fix: Render lo error rakunda absolute path set chesam
-base_dir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(base_dir, 'vault.db')
+# --- 2. Database Connection (PostgreSQL) ---
+def get_db_connection():
+    # Render లో లభించే External Database URL ని ఇక్కడ వాడాలి
+    DB_URL = os.environ.get("DATABASE_URL")
+    conn = psycopg2.connect(DB_URL, sslmode='require')
+    return conn
 
-# Uploads Folder Path Fix
-app.config['UPLOAD_FOLDER'] = os.path.join(base_dir, 'static', 'uploads')
+# టేబుల్స్ క్రియేషన్
+def init_db():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS users(
+        id SERIAL PRIMARY KEY,
+        username TEXT UNIQUE,
+        password TEXT
+    )
+    """)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS documents(
+        id SERIAL PRIMARY KEY,
+        user_name TEXT,
+        name TEXT,
+        file_url TEXT,
+        public_id TEXT,
+        password TEXT
+    )
+    """)
+    conn.commit()
+    cur.close()
+    conn.close()
 
-# Folder lekapothe create chesthundhi
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
+init_db()
 
-db = SQLAlchemy(app)
-login_manager = LoginManager(app)
-login_manager.login_view = 'login'
+# --- 3. Routes ---
 
-# --- Database Models ---
-class User(db.Model, UserMixin):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(50), unique=True, nullable=False)
-    password = db.Column(db.String(100), nullable=False)
-    docs = db.relationship('Document', backref='owner', lazy=True)
-
-class Document(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    filename = db.Column(db.String(200), nullable=False)
-    doc_password = db.Column(db.String(50), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-
-@login_manager.user_loader
-def load_user(user_id):
-    # Query.get() badulu session.get() use cheyadam 2.0 standard
-    return db.session.get(User, int(user_id))
-
-# --- Routes ---
-
-@app.route('/')
-def index():
-    return redirect(url_for('login'))
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        uname = request.form.get('username')
-        pwd = request.form.get('password')
-        if User.query.filter_by(username=uname).first():
-            flash('Username already exists!')
-            return redirect(url_for('register'))
-        new_user = User(username=uname, password=pwd)
-        db.session.add(new_user)
-        db.session.commit()
-        login_user(new_user)
-        return redirect(url_for('dashboard'))
-    return render_template('register.html')
-
-@app.route('/login', methods=['GET', 'POST'])
+@app.route("/", methods=["GET","POST"])
 def login():
-    if request.method == 'POST':
-        user = User.query.filter_by(username=request.form.get('username')).first()
-        if user and user.password == request.form.get('password'):
-            login_user(user)
-            return redirect(url_for('dashboard'))
-        flash('Invalid Credentials! Try again.')
-    return render_template('login.html')
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=DictCursor)
+        cur.execute("SELECT * FROM users WHERE username=%s AND password=%s", (username, password))
+        user = cur.fetchone()
+        cur.close()
+        conn.close()
 
-@app.route('/dashboard')
-@login_required
+        if user:
+            session["user"] = username
+            return redirect(url_for("dashboard"))
+        return "Invalid Credentials"
+    return render_template("login.html")
+
+@app.route("/register", methods=["GET","POST"])
+def register():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        
+        try:
+            conn = get_db_connection()
+            cur = conn.cursor()
+            cur.execute("INSERT INTO users(username, password) VALUES(%s, %s)", (username, password))
+            conn.commit()
+            cur.close()
+            conn.close()
+            return redirect(url_for("login"))
+        except:
+            return "User already exists"
+    return render_template("register.html")
+
+@app.route("/dashboard", methods=["GET","POST"])
 def dashboard():
-    return render_template('dashboard.html', docs=current_user.docs)
+    if "user" not in session:
+        return redirect(url_for("login"))
 
-@app.route('/upload', methods=['POST'])
-@login_required
-def upload():
-    doc_name = request.form.get('doc_name')
-    doc_pass = request.form.get('doc_pass')
-    file = request.files.get('file')
-    
-    if file and file.filename != '':
-        fname = secure_filename(file.filename)
-        save_path = os.path.join(app.config['UPLOAD_FOLDER'], fname)
-        file.save(save_path)
-        
-        new_doc = Document(name=doc_name, filename=fname, doc_password=doc_pass, user_id=current_user.id)
-        db.session.add(new_doc)
-        db.session.commit()
-        flash('Document uploaded successfully!')
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=DictCursor)
+
+    if request.method == "POST":
+        docname = request.form["docname"]
+        docpass = request.form["docpass"]
+        file = request.files["file"]
+
+        if file:
+            # Cloudinary కి అప్‌లోడ్ చేయడం
+            upload_result = cloudinary.uploader.upload(file)
+            file_url = upload_result["secure_url"]
+            public_id = upload_result["public_id"]
+
+            cur.execute("INSERT INTO documents(user_name, name, file_url, public_id, password) VALUES(%s, %s, %s, %s, %s)",
+                        (session["user"], docname, file_url, public_id, docpass))
+            conn.commit()
+
+    cur.execute("SELECT * FROM documents WHERE user_name=%s", (session["user"],))
+    docs = cur.fetchall()
+    cur.close()
+    conn.close()
+    return render_template("dashboard.html", docs=docs)
+
+@app.route("/check_password", methods=["POST"])
+def check_password():
+    docid = request.form["docid"]
+    password = request.form["password"]
+
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=DictCursor)
+    cur.execute("SELECT password, file_url FROM documents WHERE id=%s", (docid,))
+    data = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if data and data['password'] == password:
+        return jsonify({"status": "success", "file": data['file_url']})
     else:
-        flash('No file selected!')
-    return redirect(url_for('dashboard'))
+        return jsonify({"status": "fail"})
 
-@app.route('/access/<int:doc_id>', methods=['POST'])
-@login_required
-def access(doc_id):
-    doc = db.session.get(Document, doc_id)
-    if not doc:
-        flash("Document not found!")
-        return redirect(url_for('dashboard'))
-        
-    entered_pass = request.form.get('check_pass')
-    if doc.doc_password == entered_pass:
-        return render_template('view_file.html', doc=doc)
-    flash('Incorrect Document Password!')
-    return redirect(url_for('dashboard'))
+@app.route("/delete/<int:id>")
+def delete(id):
+    if "user" not in session:
+        return redirect(url_for("login"))
 
-@app.route('/delete/<int:doc_id>')
-@login_required
-def delete(doc_id):
-    doc = db.session.get(Document, doc_id)
-    if doc and doc.user_id == current_user.id:
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], doc.filename)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-        db.session.delete(doc)
-        db.session.commit()
-        flash('Document deleted successfully.')
-    return redirect(url_for('dashboard'))
-
-@app.route('/logout')
-def logout():
-    logout_user()
-    return redirect(url_for('login'))
-
-if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+    conn = get_db_connection()
+    cur = conn.cursor(cursor_factory=DictCursor)
     
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # Cloudinary నుండి ఫైల్ డిలీట్ చేయడానికి public_id పొందడం
+    cur.execute("SELECT public_id FROM documents WHERE id=%s", (id,))
+    doc = cur.fetchone()
+    
+    if doc:
+        cloudinary.uploader.destroy(doc['public_id'])
+        cur.execute("DELETE FROM documents WHERE id=%s", (id,))
+        conn.commit()
+    
+    cur.close()
+    conn.close()
+    return redirect(url_for("dashboard"))
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+if __name__ == "__main__":
+    app.run(debug=True)
